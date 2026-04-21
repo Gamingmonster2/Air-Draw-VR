@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>الرسم الهوائي | Air Draw VR</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖌️</text></svg>">
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <!-- MediaPipe Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <style>
+        :root {
+            --neon-primary: #00ff41;
+            --neon-secondary: #00b8ff;
+            --danger: #ff003c;
+            --dark-bg: #050505;
+            --glass-bg: rgba(10, 10, 10, 0.6);
+        }
+
+        * {
+            box-sizing: border-box;
+            touch-action: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: var(--dark-bg);
+            font-family: 'Tajawal', sans-serif;
+            color: white;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+
+        /* Minimal HUD */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 10;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .hud-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 20px;
+        }
+
+        .mode-indicator {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 10px 25px;
+            border-radius: 15px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            font-size: 20px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: all 0.3s ease;
+        }
+
+        /* Screens */
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at center, rgba(10,10,10,0.85) 0%, rgba(0,0,0,1) 100%);
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            transition: opacity 0.5s ease;
+            overflow-y: auto;
+        }
+
+        .screen-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            max-width: 800px;
+            width: 100%;
+        }
+
+        .hidden {
+            opacity: 0 !important;
+            pointer-events: none !important;
+        }
+
+        h1 {
+            font-size: 3.5rem;
+            color: #fff;
+            margin: 0 0 10px 0;
+            text-align: center;
+            letter-spacing: 2px;
+            text-shadow: 0 0 20px rgba(255,255,255,0.3);
+        }
+
+        h1 span {
+            color: var(--neon-secondary);
+            text-shadow: 0 0 20px var(--neon-secondary);
+        }
+
+        p.subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 20px;
+            color: #aaa;
+            text-align: center;
+            line-height: 1.6;
+        }
+
+        /* Tutorial Box */
+        .tutorial-box {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            text-align: right;
+            width: 100%;
+            max-width: 550px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        .tutorial-box h3 {
+            margin: 0 0 15px 0;
+            color: var(--neon-secondary);
+            text-align: center;
+            font-size: 1.4rem;
+        }
+
+        .tutorial-box ul {
+            margin: 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .tutorial-box li {
+            font-size: 1.1rem;
+            color: #ddd;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 10px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            width: 100%;
+        }
+
+        button {
+            padding: 15px 30px;
+            font-size: 1.2rem;
+            font-family: 'Tajawal', sans-serif;
+            font-weight: 900;
+            color: var(--dark-bg);
+            background: var(--neon-secondary);
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 0 20px rgba(0, 184, 255, 0.4);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        button:hover, button:active {
+            transform: scale(1.05) translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 184, 255, 0.6);
+            background: #fff;
+        }
+
+        .secondary-btn {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: none;
+        }
+
+        .secondary-btn:hover, .secondary-btn:active {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: #fff;
+            color: #fff;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
+        }
+
+        .loader {
+            width: 80px;
+            height: 80px;
+            border: 5px solid rgba(0, 184, 255, 0.2);
+            border-top: 5px solid var(--neon-secondary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 30px;
+            box-shadow: 0 0 30px rgba(0, 184, 255, 0.2);
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .input_video {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.2rem; }
+            .tutorial-box ul { grid-template-columns: 1fr; }
+            button { font-size: 1.1rem; padding: 12px 20px; width: 100%; justify-content: center; }
+            .hud-top { padding: 10px; }
+            .mode-indicator { font-size: 16px; padding: 8px 15px; }
+        }
+    </style>
+</head>
+<body>
+
+    <video class="input_video"></video>
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="ui-layer" class="hidden">
+        <div class="hud-top">
+            <div class="mode-indicator" id="modeDisplay">
+                <span>🖐️</span> جاهز
+            </div>
+            <button id="clearBtn" class="secondary-btn" style="padding: 10px 20px; font-size: 1rem; pointer-events: auto;">
+                🗑️ مسح الكل
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Screen -->
+    <div id="loadingScreen" class="screen hidden">
+        <div class="loader"></div>
+        <h2 style="color: white; font-size: 2rem; margin-bottom: 10px;">جاري تشغيل الكاميرا...</h2>
+        <p>يرجى الانتظار وتجهيز يدك أمام الكاميرا</p>
+    </div>
+
+    <!-- Start Screen -->
+    <div id="startScreen" class="screen">
+        <div class="screen-content">
+            <h1>Air Draw <span>VR</span></h1>
+            <p class="subtitle">تطبيق رسم تفاعلي يعتمد على تتبع حركة اليد في الهواء باستخدام الذكاء الاصطناعي.</p>
+            
+            <div class="tutorial-box">
+                <h3>الإيماءات الذكية</h3>
+                <ul>
+                    <li><span>☝️</span> <b>إصبع واحد:</b> للرسم</li>
+                    <li><span>✌️</span> <b>إصبعين:</b> ممحاة ذكية</li>
+                    <li><span>🖐️</span> <b>كف مفتوح:</b> تحريك المؤشر بحرية</li>
+                    <li><span>✊</span> <b>قبضة مغلقة:</b> مسح الشاشة بالكامل</li>
+                </ul>
+            </div>
+
+            <div class="button-group">
+                <button id="demoBtn" class="secondary-btn">👆 تجربة بالماوس / اللمس</button>
+                <button id="cameraBtn">📷 ابدأ الرسم بالكاميرا</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Core Variables ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const videoElement = document.getElementsByClassName('input_video')[0];
+        
+        // Offscreen canvas for drawing strokes (allows proper erasing without affecting camera background)
+        const offscreenCanvas = document.createElement('canvas');
+        const offCtx = offscreenCanvas.getContext('2d');
+
+        let width, height;
+        let gameState = 'start';
+        let cameraStarted = false;
+        let isDemoMode = true;
+        let latestImage = null;
+        let handsInitialized = false;
+
+        // Drawing State
+        let strokes = []; // Array of { type: 'draw'|'erase', color, points: [{x, y}] }
+        let currentStroke = null;
+        let currentColor = '#00ff41';
+        let currentMode = 'HOVER'; // HOVER, DRAW, ERASE, CLEAR
+        let clearProgress = 0;
+
+        // Cursor Smoothing
+        let cursor = { x: 0.5, y: 0.5 }; // Relative coordinates (0 to 1)
+        let rawCursor = { x: 0.5, y: 0.5 };
+        const SMOOTHING_FACTOR = 0.4; // Lower = smoother but more lag
+
+        // Virtual Color Palette
+        const PALETTE_COLORS = ['#ff003c', '#00ff41', '#00b8ff', '#ffb800', '#ffffff', '#ff00ff'];
+        let paletteButtons = [];
+
+        // UI Elements
+        const uiLayer = document.getElementById('ui-layer');
+        const modeDisplay = document.getElementById('modeDisplay');
+        const loadingScreen = document.getElementById('loadingScreen');
+        const startScreen = document.getElementById('startScreen');
+
+        // --- Setup & Resize ---
+        function resizeCanvas() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            offscreenCanvas.width = width;
+            offscreenCanvas.height = height;
+            
+            // Rebuild palette positions
+            paletteButtons = PALETTE_COLORS.map((color, index) => {
+                const totalWidth = PALETTE_COLORS.length * 60;
+                const startX = (width - totalWidth) / 2 + 30;
+                return { color: color, x: startX + index * 60, y: 60, r: 20 };
+            });
+            
+            redrawOffscreen();
+        }
+        window.addEventListener('resize', resizeCanvas);
+
+        // --- MediaPipe Setup ---
+        let hands;
+        let camera;
+
+        async function initMediaPipe() {
+            if (handsInitialized) return true;
+            try {
+                hands = new Hands({locateFile: (file) => {
+                    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+                }});
+
+                hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.7,
+                    minTrackingConfidence: 0.7
+                });
+
+                hands.onResults((results) => {
+                    latestImage = results.image;
+                    if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                        processHand(results.multiHandLandmarks[0]);
+                    } else {
+                        currentMode = 'HOVER';
+                        currentStroke = null;
+                    }
+                });
+
+                await hands.initialize();
+                
+                camera = new Camera(videoElement, {
+                    onFrame: async () => {
+                        if(gameState === 'playing' && !isDemoMode) {
+                            await hands.send({image: videoElement});
+                        }
+                    },
+                    width: 640,
+                    height: 480
+                });
+                
+                handsInitialized = true;
+                return true;
+            } catch (e) {
+                console.error("MediaPipe init error", e);
+                return false;
+            }
+        }
+
+        // --- Hand Logic & Gestures ---
+        function processHand(landmarks) {
+            // Get raw cursor position (Index Finger Tip - landmark 8)
+            // Mirror X coordinate so it acts like a mirror
+            rawCursor.x = 1 - landmarks[8].x;
+            rawCursor.y = landmarks[8].y;
+
+            // Apply Low-Pass Filter for smoothing
+            cursor.x += (rawCursor.x - cursor.x) * SMOOTHING_FACTOR;
+            cursor.y += (rawCursor.y - cursor.y) * SMOOTHING_FACTOR;
+
+            // Gesture Detection
+            // Compare tip (y) with PIP joint (y) to see if finger is extended
+            const isIndexUp = landmarks[8].y < landmarks[6].y;
+            const isMiddleUp = landmarks[12].y < landmarks[10].y;
+            const isRingUp = landmarks[16].y < landmarks[14].y;
+            const isPinkyUp = landmarks[20].y < landmarks[18].y;
+
+            let newMode = 'HOVER';
+
+            if (!isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+                newMode = 'CLEAR'; // Fist
+            } else if (isIndexUp && isMiddleUp && !isRingUp && !isPinkyUp) {
+                newMode = 'ERASE'; // Two fingers
+            } else if (isIndexUp && !isMiddleUp && !isRingUp && !isPinkyUp) {
+                newMode = 'DRAW'; // One finger
+            } else if (isIndexUp && isMiddleUp && isRingUp && isPinkyUp) {
+                newMode = 'HOVER'; // Open Palm
+            }
+
+            handleModeChange(newMode);
+            processAction();
+        }
+
+        function handleModeChange(newMode) {
+            if (currentMode !== newMode) {
+                currentMode = newMode;
+                currentStroke = null; // Break stroke on mode change
+                
+                let text = '';
+                let color = '';
+                switch(currentMode) {
+                    case 'DRAW': text = '☝️ رسم'; color = currentColor; break;
+                    case 'ERASE': text = '✌️ ممحاة'; color = '#ff003c'; break;
+                    case 'CLEAR': text = '✊ مسح الشاشة'; color = '#ffb800'; break;
+                    case 'HOVER': text = '🖐️ تحريك'; color = '#ffffff'; break;
+                }
+                modeDisplay.innerHTML = text;
+                modeDisplay.style.borderColor = color;
+                modeDisplay.style.boxShadow = `0 0 15px ${color}40`;
+            }
+        }
+
+        function processAction() {
+            // Check Virtual Buttons (Color Palette)
+            if (currentMode === 'HOVER' || currentMode === 'DRAW') {
+                const cx = cursor.x * width;
+                const cy = cursor.y * height;
+                
+                for (let btn of paletteButtons) {
+                    const dist = Math.hypot(cx - btn.x, cy - btn.y);
+                    if (dist < btn.r * 1.5) { // Slightly larger hit area
+                        currentColor = btn.color;
+                        if (currentMode === 'DRAW') currentStroke = null; // Restart stroke with new color
+                        handleModeChange(currentMode); // Update UI color
+                        break;
+                    }
+                }
+            }
+
+            // Handle Clear Progress
+            if (currentMode === 'CLEAR') {
+                clearProgress += 3;
+                if (clearProgress >= 100) {
+                    strokes = [];
+                    redrawOffscreen();
+                    clearProgress = 0;
+                    currentMode = 'HOVER'; // Reset mode to prevent continuous clearing
+                }
+            } else {
+                clearProgress = Math.max(0, clearProgress - 10);
+            }
+
+            // Handle Drawing/Erasing
+            if (currentMode === 'DRAW' || currentMode === 'ERASE') {
+                const type = currentMode === 'DRAW' ? 'draw' : 'erase';
+                
+                if (!currentStroke || currentStroke.type !== type || currentStroke.color !== currentColor) {
+                    currentStroke = { type: type, color: currentColor, points: [] };
+                    strokes.push(currentStroke);
+                }
+
+                // Add point if distance from last point is significant (prevents huge arrays)
+                const pts = currentStroke.points;
+                if (pts.length === 0) {
+                    pts.push({ x: cursor.x, y: cursor.y });
+                } else {
+                    const lastPt = pts[pts.length - 1];
+                    const dist = Math.hypot(lastPt.x - cursor.x, lastPt.y - cursor.y);
+                    if (dist > 0.002) { // Minimum distance threshold
+                        pts.push({ x: cursor.x, y: cursor.y });
+                    }
+                }
+            }
+        }
+
+        // --- Mouse / Touch Fallback ---
+        let isMouseDown = false;
+        let isRightClick = false;
+
+        function handleInputStart(e, isRight = false) {
+            if (gameState !== 'playing' || !isDemoMode) return;
+            isMouseDown = true;
+            isRightClick = isRight;
+            updateFallbackCursor(e);
+            handleModeChange(isRightClick ? 'ERASE' : 'DRAW');
+            processAction();
+        }
+
+        function handleInputMove(e) {
+            if (gameState !== 'playing' || !isDemoMode) return;
+            updateFallbackCursor(e);
+            if (isMouseDown) {
+                processAction();
+            } else {
+                handleModeChange('HOVER');
+                processAction();
+            }
+        }
+
+        function handleInputEnd() {
+            if (gameState !== 'playing' || !isDemoMode) return;
+            isMouseDown = false;
+            isRightClick = false;
+            handleModeChange('HOVER');
+        }
+
+        function updateFallbackCursor(e) {
+            let clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            let clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            
+            rawCursor.x = clientX / width;
+            rawCursor.y = clientY / height;
+            
+            // Instantly update cursor in demo mode (no smoothing needed for mouse)
+            cursor.x = rawCursor.x;
+            cursor.y = rawCursor.y;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 2) handleInputStart(e, true);
+            else handleInputStart(e, false);
+        });
+        canvas.addEventListener('mousemove', handleInputMove);
+        canvas.addEventListener('mouseup', handleInputEnd);
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+        
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            handleInputStart(e, e.touches.length > 1); // 2 fingers = erase
+        }, {passive: false});
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            handleInputMove(e);
+        }, {passive: false});
+        canvas.addEventListener('touchend', handleInputEnd);
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            strokes = [];
+            redrawOffscreen();
+        });
+
+        // --- Rendering ---
+        function drawCurve(ctx, points) {
+            if (points.length < 2) {
+                ctx.beginPath();
+                ctx.arc(points[0].x * width, points[0].y * height, ctx.lineWidth / 2, 0, Math.PI * 2);
+                ctx.fill();
+                return;
+            }
+
+            ctx.beginPath();
+            ctx.moveTo(points[0].x * width, points[0].y * height);
+            
+            for (let i = 1; i < points.length - 1; i++) {
+                const xc = (points[i].x + points[i+1].x) / 2 * width;
+                const yc = (points[i].y + points[i+1].y) / 2 * height;
+                ctx.quadraticCurveTo(points[i].x * width, points[i].y * height, xc, yc);
+            }
+            
+            const last = points[points.length - 1];
+            ctx.lineTo(last.x * width, last.y * height);
+            ctx.stroke();
+        }
+
+        function redrawOffscreen() {
+            offCtx.clearRect(0, 0, width, height);
+            offCtx.lineCap = 'round';
+            offCtx.lineJoin = 'round';
+
+            for (let stroke of strokes) {
+                if (stroke.type === 'draw') {
+                    offCtx.globalCompositeOperation = 'source-over';
+                    offCtx.strokeStyle = stroke.color;
+                    offCtx.fillStyle = stroke.color;
+                    offCtx.lineWidth = 8;
+                    offCtx.shadowBlur = 10;
+                    offCtx.shadowColor = stroke.color;
+                } else if (stroke.type === 'erase') {
+                    offCtx.globalCompositeOperation = 'destination-out';
+                    offCtx.strokeStyle = 'rgba(0,0,0,1)';
+                    offCtx.fillStyle = 'rgba(0,0,0,1)';
+                    offCtx.lineWidth = 50;
+                    offCtx.shadowBlur = 0;
+                }
+                drawCurve(offCtx, stroke.points);
+            }
+        }
+
+        function gameLoop() {
+            requestAnimationFrame(gameLoop);
+
+            if (gameState !== 'playing') return;
+
+            ctx.clearRect(0, 0, width, height);
+
+            // 1. Draw Background / Camera Feed
+            if (!isDemoMode && cameraStarted && latestImage) {
+                ctx.save();
+                // Mirror camera horizontally
+                ctx.translate(width, 0);
+                ctx.scale(-1, 1);
+                
+                const videoRatio = latestImage.width / latestImage.height;
+                const canvasRatio = width / height;
+                let drawWidth, drawHeight, offsetX = 0, offsetY = 0;
+                
+                if (canvasRatio > videoRatio) {
+                    drawWidth = width;
+                    drawHeight = width / videoRatio;
+                    offsetY = (height - drawHeight) / 2;
+                } else {
+                    drawHeight = height;
+                    drawWidth = height * videoRatio;
+                    offsetX = (width - drawWidth) / 2;
+                }
+                
+                ctx.filter = 'brightness(0.3) contrast(1.2) grayscale(0.8)';
+                ctx.drawImage(latestImage, offsetX, offsetY, drawWidth, drawHeight);
+                ctx.restore();
+            } else {
+                let bgGrad = ctx.createRadialGradient(width/2, height/2, 0, width/2, height/2, width);
+                bgGrad.addColorStop(0, '#1a1a2e');
+                bgGrad.addColorStop(1, '#0f0f1a');
+                ctx.fillStyle = bgGrad;
+                ctx.fillRect(0, 0, width, height);
+                
+                // Grid
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
+                ctx.lineWidth = 1;
+                const gridSize = 50;
+                for(let i=0; i<width; i+=gridSize) { ctx.beginPath(); ctx.moveTo(i,0); ctx.lineTo(i,height); ctx.stroke(); }
+                for(let i=0; i<height; i+=gridSize) { ctx.beginPath(); ctx.moveTo(0,i); ctx.lineTo(width,i); ctx.stroke(); }
+            }
+
+            // 2. Continuous Offscreen Update (Only draw the active stroke to save performance)
+            if (currentStroke && currentStroke.points.length > 0) {
+                // Instead of clearing and redrawing everything every frame, 
+                // we just redraw the whole array. For a production app, we'd optimize this.
+                redrawOffscreen(); 
+            }
+
+            // 3. Draw Offscreen Canvas to Main Canvas
+            ctx.drawImage(offscreenCanvas, 0, 0);
+
+            // 4. Draw UI Elements (Palette)
+            paletteButtons.forEach(btn => {
+                ctx.beginPath();
+                ctx.arc(btn.x, btn.y, btn.r, 0, Math.PI * 2);
+                ctx.fillStyle = btn.color;
+                ctx.fill();
+                
+                if (currentColor === btn.color) {
+                    ctx.lineWidth = 3;
+                    ctx.strokeStyle = '#fff';
+                    ctx.stroke();
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = btn.color;
+                    ctx.stroke();
+                    ctx.shadowBlur = 0;
+                }
+            });
+
+            // 5. Draw Cursor & Helpers
+            const cx = cursor.x * width;
+            const cy = cursor.y * height;
+
+            ctx.beginPath();
+            if (currentMode === 'ERASE') {
+                ctx.arc(cx, cy, 25, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 0, 60, 0.3)';
+                ctx.fill();
+                ctx.strokeStyle = '#ff003c';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            } else {
+                ctx.arc(cx, cy, currentMode === 'DRAW' ? 8 : 12, 0, Math.PI * 2);
+                ctx.fillStyle = currentColor;
+                ctx.shadowBlur = 15;
+                ctx.shadowColor = currentColor;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+                
+                if (currentMode === 'HOVER') {
+                    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+            }
+
+            // Clear Progress Ring
+            if (clearProgress > 0) {
+                ctx.beginPath();
+                ctx.arc(cx, cy, 40, -Math.PI/2, (-Math.PI/2) + (Math.PI * 2 * (clearProgress / 100)));
+                ctx.strokeStyle = '#ffb800';
+                ctx.lineWidth = 5;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+            }
+        }
+
+        // --- Game Flow Management ---
+        function requestFullScreen() {
+            const docElm = document.documentElement;
+            if (docElm.requestFullscreen) { docElm.requestFullscreen().catch(()=>{}); }
+            else if (docElm.webkitRequestFullscreen) { docElm.webkitRequestFullscreen().catch(()=>{}); }
+        }
+
+        async function startCameraMode() {
+            requestFullScreen();
+            startScreen.classList.add('hidden');
+            loadingScreen.classList.remove('hidden');
+            
+            const success = await initMediaPipe();
+            if (!success) {
+                alert("فشل تحميل الكاميرا. سيتم تحويلك لوضع اللمس/الماوس.");
+                isDemoMode = true;
+                startGame();
+                return;
+            }
+
+            try {
+                await camera.start();
+                cameraStarted = true;
+                isDemoMode = false;
+                startGame();
+            } catch (err) {
+                alert("يرجى السماح باستخدام الكاميرا. سيتم تحويلك لوضع اللمس/الماوس.");
+                isDemoMode = true;
+                startGame();
+            }
+        }
+
+        function startDemoMode() {
+            requestFullScreen();
+            isDemoMode = true;
+            startGame();
+        }
+
+        function startGame() {
+            loadingScreen.classList.add('hidden');
+            startScreen.classList.add('hidden');
+            uiLayer.classList.remove('hidden');
+
+            gameState = 'playing';
+            strokes = [];
+            redrawOffscreen();
+            handleModeChange('HOVER');
+        }
+
+        // Event Listeners
+        document.getElementById('cameraBtn').addEventListener('click', startCameraMode);
+        document.getElementById('demoBtn').addEventListener('click', startDemoMode);
+
+        // Initialize
+        resizeCanvas();
+        requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>
